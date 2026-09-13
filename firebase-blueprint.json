@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Database schema for CEQHS Living Journey with User Profiles, Dynamic Difficulty Adjustment (DDA) Game Progress, and Journey Entries.",
+  "entities": {
+    "users": {
+      "path": "users/{userId}",
+      "description": "User profile, educational identity, personal intention, and app settings",
+      "fields": {
+        "id": { "type": "string", "description": "Unique user ID matching auth UID" },
+        "email": { "type": "string", "description": "User email address" },
+        "name": { "type": "string", "description": "Display name of the educator or participant" },
+        "role": { "type": "string", "description": "Role: educator, coordinator, or admin" },
+        "schoolName": { "type": "string", "description": "School or educational campus name" },
+        "schoolId": { "type": "string", "description": "School identifier" },
+        "title": { "type": "string", "description": "Professional title or subject role" },
+        "avatarUrl": { "type": "string", "description": "Profile picture URL" },
+        "academicYear": { "type": "string", "description": "Current academic year, e.g., 2026-27" },
+        "intention": { "type": "string", "description": "Personal human skills intention for the year" },
+        "settings": {
+          "type": "map",
+          "description": "User preferences including audio, timer mode, and DDA challenge sensitivity"
+        },
+        "createdAt": { "type": "string", "description": "Timestamp of profile creation" },
+        "updatedAt": { "type": "string", "description": "Timestamp of last profile update" }
+      },
+      "subcollections": {
+        "game_progress": {
+          "path": "users/{userId}/game_progress/{progressId}",
+          "description": "Stores dynamic difficulty adjustment state, performance telemetry, and achievements",
+          "fields": {
+            "userId": { "type": "string", "description": "Owner user ID" },
+            "skillRating": { "type": "number", "description": "Player ELO-style skill rating (e.g. 1000 - 2500)" },
+            "difficultyTier": { "type": "number", "description": "Current adaptive tier from 1 (Novice) to 5 (Master)" },
+            "totalPlayed": { "type": "number", "description": "Total scenarios played" },
+            "successCount": { "type": "number", "description": "Number of successful empathic decisions" },
+            "successRate": { "type": "number", "description": "Rolling success percentage (0-100)" },
+            "currentStreak": { "type": "number", "description": "Current consecutive successful decisions" },
+            "bestStreak": { "type": "number", "description": "Longest consecutive success streak" },
+            "avgResponseTime": { "type": "number", "description": "Average response duration in seconds" },
+            "flowScore": { "type": "number", "description": "Optimal engagement flow index (0-100)" },
+            "adaptiveTimerSeconds": { "type": "number", "description": "Dynamic time limit adjusted by player speed" },
+            "achievements": { "type": "list", "description": "List of unlocked achievement badges" },
+            "recentHistory": { "type": "list", "description": "Last 15 scenario performance records" },
+            "updatedAt": { "type": "string", "description": "Timestamp of last game session save" }
+          }
+        },
+        "journey_entries": {
+          "path": "users/{userId}/journey_entries/{entryId}",
+          "description": "User created moments, practice notes, reflections, and evidence artifacts",
+          "fields": {
+            "id": { "type": "string", "description": "Unique entry identifier" },
+            "type": { "type": "string", "description": "Entry type: moment, practice, reflection, evidence, voice" },
+            "title": { "type": "string", "description": "Entry headline" },
+            "description": { "type": "string", "description": "Main narrative or reflection" },
+            "date": { "type": "string", "description": "Entry date string" },
+            "phaseId": { "type": "string", "description": "Associated journey phase" },
+            "themeId": { "type": "string", "description": "Associated inquiry theme" },
+            "authorId": { "type": "string", "description": "Author UID" },
+            "authorName": { "type": "string", "description": "Author display name" },
+            "authorRole": { "type": "string", "description": "Author role" },
+            "whyDoesThisMatter": { "type": "string", "description": "Reflection on meaning and human impact" },
+            "momentCategory": { "type": "string", "description": "Category: Growth, Connection, Insight, Belonging, Change, Surprise" },
+            "visibility": { "type": "string", "description": "Private, School, Dossier, or CEQHS Review" },
+            "includedInDossier": { "type": "boolean", "description": "Whether flagged for the annual publication" },
+            "updatedAt": { "type": "string", "description": "Timestamp of entry creation or edit" }
+          }
+        },
+        "development_goals": {
+          "path": "users/{userId}/development_goals/{goalId}",
+          "description": "Short-term professional growth objectives linked to SEI Adults assessment and daily entries",
+          "fields": {
+            "id": { "type": "string", "description": "Unique goal identifier" },
+            "userId": { "type": "string", "description": "Goal owner user ID" },
+            "title": { "type": "string", "description": "Goal statement or headline" },
+            "assessmentSource": { "type": "string", "description": "SEI Adults UEQ Profile, Neural Net, or Leadership" },
+            "assessmentReportName": { "type": "string", "description": "Uploaded report file name" },
+            "competency": { "type": "string", "description": "Emotional intelligence competency targeted" },
+            "competencyCategory": { "type": "string", "description": "Know, Choose, Give Yourself, or Neural Net Profile" },
+            "timeframeWeeks": { "type": "number", "description": "Duration in weeks" },
+            "targetDate": { "type": "string", "description": "Goal completion target date" },
+            "actionPlan": { "type": "string", "description": "How the educator will develop this competency" },
+            "weeklyTips": { "type": "list", "description": "List of weekly actionable coaching tips" },
+            "currentWeekTipIndex": { "type": "number", "description": "Active weekly tip index" },
+            "linkedEntryIds": { "type": "list", "description": "Array of linked reflection and moment IDs" },
+            "status": { "type": "string", "description": "In Progress, On Track, Needs Attention, or Completed" },
+            "progressPercentage": { "type": "number", "description": "Goal completion percentage 0-100" },
+            "createdAt": { "type": "string", "description": "Timestamp of goal creation" }
+          }
+        }
+      }
+    }
+  }
+}

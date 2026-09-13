@@ -1,0 +1,6 @@
+{
+  "name": "CEQHS Living Journey",
+  "description": "A living record of human development in schools. Notice, practise, reflect, and grow throughout the academic year.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
