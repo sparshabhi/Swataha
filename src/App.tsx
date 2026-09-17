@@ -163,6 +163,27 @@ export default function App() {
     return INITIAL_NOTIFICATIONS;
   });
 
+  const handleResetAllData = () => {
+    setEntries(INITIAL_ENTRIES);
+    setGameProgress(INITIAL_GAME_PROGRESS);
+    setCheckpoints(CEQHS_REVIEW_CHECKPOINTS);
+    setTenants(INITIAL_TENANTS);
+    setTenantUsers(INITIAL_TENANT_USERS);
+    setNotifications([]);
+    setActiveTenantId(INITIAL_TENANTS[0]?.id || '');
+    setCurrentUserKey('maya');
+    setCurrentTab('home');
+    setSelectedThemeIdForView('empathetic-discipline');
+    setActiveUser(MOCK_USERS.maya);
+    setActivePortalRole('ceqhs');
+    setIsAuthenticated(true);
+    try {
+      localStorage.setItem('ceqhs_active_tenant_id', INITIAL_TENANTS[0]?.id || '');
+      localStorage.setItem('ceqhs_portal_role', 'ceqhs');
+      sessionStorage.setItem('ceqhs_portal_role', 'ceqhs');
+    } catch {}
+  };
+
   useEffect(() => {
     localStorage.setItem('ceqhs_notifications', JSON.stringify(notifications));
   }, [notifications]);
@@ -662,7 +683,7 @@ export default function App() {
       tenants.find((t) => t.id === (tenantId || activeTenantId)) || tenants[0];
 
     if (role === 'ceqhs') {
-      const isSaugat = !_user || _user.toLowerCase().includes('saugat') || _user.toLowerCase().includes('admin') || _user.toLowerCase().includes('ceqhs') || _user.toLowerCase().includes('swataha');
+      const isSaugat = !_user || _user.toLowerCase().includes('saugat') || _user.toLowerCase().includes('admin') || _user.toLowerCase().includes('ceqhs') || _user.toLowerCase().includes('swataha') || _user.toLowerCase().includes('platform');
       const resolvedName = isSaugat ? 'Saugat Singh' : (_user.includes('@') ? _user.split('@')[0] : _user);
       const resolvedEmail = isSaugat ? 'saugat.swataha@gmail.com' : (_user.includes('@') ? _user : 'saugat.swataha@gmail.com');
 
@@ -958,6 +979,7 @@ export default function App() {
         firebaseUser={firebaseUser}
         gameProgress={gameProgress}
         onUpdateUser={handleUpdateUserProfile}
+        onResetAllData={handleResetAllData}
       />
 
       {/* Notification Center & Simulated Email Dispatches */}
