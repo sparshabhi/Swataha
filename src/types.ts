@@ -81,6 +81,7 @@ export interface Theme {
 
 export interface JourneyEntry {
   id: string;
+  tenantId?: string;
   type: EntryType;
   title: string;
   date: string;
@@ -131,7 +132,8 @@ export type SEICompetencyCategory =
 export interface WeeklyActionTip {
   weekNumber: number;
   tip: string;
-  focusHabit: string;
+  focusHabit?: string;
+  habit?: string;
   isCompleted?: boolean;
 }
 
@@ -300,4 +302,280 @@ export interface GameProgressState {
   recentHistory: ScenarioAttempt[];
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// CEQHS MULTI-TENANT ARCHITECTURE FOR DOSSIER DEVELOPMENT
+// ---------------------------------------------------------------------------
+
+export type TenantHierarchyRole = 'platform_admin' | 'school_admin' | 'coordinator' | 'teacher';
+
+export interface TenantDossierPillar {
+  id: string;
+  name: string;
+  completedItems: number;
+  totalRequired: number;
+}
+
+export interface Tenant {
+  id: string;
+  code: string; // e.g. 'TENANT-A', 'TENANT-B'
+  name: string; // e.g. 'Oakridge Secondary School'
+  type: 'secondary' | 'high_school' | 'k12' | 'charter' | 'international';
+  region: string;
+  academicYear: string;
+  leadAdminName: string;
+  leadAdminEmail: string;
+  coordinatorName: string;
+  coordinatorEmail: string;
+  status: 'active' | 'onboarding' | 'review_ready';
+  dossierStage: JourneyPhaseId;
+  dossierProgress: number; // 0-100%
+  pillars: TenantDossierPillar[];
+  createdAt: string;
+  motto?: string;
+  description?: string;
+  enrolledStudents?: number;
+  participatingTeachers?: number;
+}
+
+export interface TenantUser {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  name: string;
+  email: string;
+  role: 'school_admin' | 'coordinator' | 'teacher';
+  title: string;
+  department?: string;
+  competencyFocus?: string;
+  joinedDate: string;
+  activeEntriesCount?: number;
+  avatarInitials?: string;
+  status?: 'pending_approval' | 'active' | 'suspended';
+  approvedAt?: string;
+  approvedBy?: string;
+  requestedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATION SYSTEM & EMAIL PREVIEWS
+// ---------------------------------------------------------------------------
+
+export interface SimulatedEmail {
+  id: string;
+  subject: string;
+  fromName: string;
+  fromEmail: string;
+  toName: string;
+  toEmail: string;
+  schoolName: string;
+  sentAt: string;
+  previewSnippet: string;
+  bodyText: string;
+  temporaryPassword?: string;
+  loginUrl?: string;
+  competencyFocus?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'account_approved' | 'dossier_feedback' | 'bulk_enrolled' | 'checkpoint_assigned' | 'system';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  recipientEmail?: string;
+  recipientRole?: 'educator' | 'coordinator' | 'admin' | 'all';
+  tenantId?: string;
+  actionLabel?: string;
+  actionTab?: string;
+  simulatedEmail?: SimulatedEmail;
+  feedbackAuthor?: string;
+  feedbackQuote?: string;
+}
+
+// ---------------------------------------------------------------------------
+// AGGREGATED STUDENT VOICE & EMOTIONAL CLIMATE
+// ---------------------------------------------------------------------------
+
+export interface StudentClimateQuote {
+  id: string;
+  quote: string;
+  gradeLevel: string; // e.g. 'Grade 7', 'Grade 9', 'Grade 11'
+  themeTitle: string;
+  date: string;
+  teacherName: string;
+  sentiment: 'positive' | 'reflective' | 'vulnerable';
+  emotionalShift: string;
+  tags: string[];
+}
+
+export interface GradeClimateMetric {
+  grade: string;
+  safetyScore: number; // 0 - 100
+  belongingScore: number; // 0 - 100
+  expressionScore: number; // 0 - 100
+  responsesCount: number;
+  dominantMood: 'Calm & Centered' | 'Curious & Inspired' | 'Restless / Anxious' | 'Fatigued';
+  notableInsight: string;
+}
+
+// ---------------------------------------------------------------------------
+// CEQHS METRICS AND QUESTIONNAIRE MANUAL (GRADES 1-5 MEASUREMENT ARCHITECTURE)
+// ---------------------------------------------------------------------------
+
+export type CeqhsDomainKey =
+  | 'self_awareness'
+  | 'self_management'
+  | 'social_awareness'
+  | 'relationship_skills'
+  | 'responsible_decision_making';
+
+export type EvidenceSourceKey =
+  | 'learner_voice'
+  | 'adult_practice'
+  | 'structured_observation'
+  | 'context_implementation';
+
+export type EvidenceStrength =
+  | 'emerging'
+  | 'developing'
+  | 'strong'
+  | 'reviewed_impact';
+
+export type MeasurementWaveKey =
+  | 'baseline'
+  | 'early_check'
+  | 'midline'
+  | 'endline'
+  | 'follow_up';
+
+export interface WaveDataPoint {
+  indicatorScore: number; // 0-100 index for visualization
+  label: string;
+  sampleSize: number;
+  responseRate: number; // percentage
+  date: string;
+}
+
+export interface DomainEvidenceProfile {
+  id: string;
+  domainKey: CeqhsDomainKey;
+  domainName: string;
+  measurementDefinition: string;
+  evidenceStrength: EvidenceStrength;
+  evidenceSourcesActive: EvidenceSourceKey[];
+  waves: Record<MeasurementWaveKey, WaveDataPoint>;
+  factualObservationSummary: string;
+  nextStepRecommendation: string;
+  missingnessRate: number; // percentage
+  reviewerStatus: 'Pending Review' | 'Verified by Council' | 'Needs Multi-source Evidence';
+}
+
+export interface GuidedPerformanceTask {
+  id: string;
+  taskCode: 'Task A' | 'Task B' | 'Task C' | 'Task D' | 'Task E';
+  title: string;
+  primaryDomain: string;
+  secondaryDomain?: string;
+  durationMinutes: string;
+  scenarioIllustration: string;
+  inquiryPrompt: string;
+  checklistCriteria: string[];
+  administrationGuidance: string;
+}
+
+export interface LearnerVoiceItem {
+  id: string;
+  code: string;
+  domainKey: CeqhsDomainKey;
+  prompt: string;
+  ageBand: 'Grades 1-2' | 'Grade 3' | 'Grades 4-5';
+  isContextItem?: boolean;
+}
+
+export interface GuidedDilemmaScenario {
+  id: string;
+  title: string;
+  scenarioCode: string;
+  primaryDomain: string;
+  secondaryDomains: string[];
+  storyText: string;
+  question: string;
+  options: {
+    key: string;
+    text: string;
+    isConstructive: boolean;
+    reasoningExplanation: string;
+  }[];
+  reasoningRubricCriteria: string[];
+}
+
+export interface AdultPracticeItem {
+  id: string;
+  code: string;
+  domainKey: CeqhsDomainKey;
+  prompt: string;
+  isContextItem?: boolean;
+}
+
+export interface ObservationRubricDomain {
+  domainKey: CeqhsDomainKey;
+  domainName: string;
+  learnerIndicator: string;
+  adultIndicator: string;
+}
+
+export interface StructuredObservationSession {
+  id: string;
+  date: string;
+  durationMinutes: number;
+  activityContext: string;
+  gradeLevel: string;
+  observerName: string;
+  observerRole: string;
+  opportunityPresent: boolean;
+  ratings: Record<CeqhsDomainKey, {
+    score: 0 | 1 | 2 | 3 | 4; // 0 = not observed (not counted as zero)
+    factualExample: string;
+    supportPromptingGiven: string;
+  }>;
+  adaptationNotes: string;
+  followUpRecommendation: string;
+  reviewerStatus: 'Draft' | 'Validated';
+}
+
+export interface ValuesInActionProject {
+  id: string;
+  title: string;
+  gradeCohort: string;
+  teacherLead: string;
+  term: string;
+  dimensions: {
+    need: string; // Did learners help identify a real and relevant need?
+    perspective: string; // Were affected people, differing views, and inclusion needs considered?
+    decision: string; // Did the group consider evidence, safety, fairness, values, and consequences?
+    action: string; // Did learners take an age-appropriate responsible action with adult support?
+    reflection: string; // Did they examine results, unintended effects, limitations, and next steps?
+  };
+  artifactsCount: number;
+  dossierStatus: 'Proposal' | 'In Progress' | 'Nominated for Dossier' | 'Accredited Evidence';
+}
+
+export interface ImplementationFidelityMetrics {
+  reachLearnersPercent: number;
+  reachAdultsPercent: number;
+  plannedSessions: number;
+  deliveredSessions: number;
+  minimumDosePercent: number;
+  coreComponentsPercent: number;
+  adultPsychologicalSafetyScore: number;
+  protectedTimetablePercent: number;
+  newStaffInductionActive: boolean;
+  belongingContextScore: number;
+  perceivedSafetyScore: number;
+  helpSeekingConfidenceScore: number;
+}
+
+
 

@@ -258,7 +258,7 @@ export const EducatorDashboard: React.FC<EducatorDashboardProps> = ({
     onOpenCapture(
       'reflection',
       currentTheme.id,
-      `Practicing ${goal.competency} (Week ${activeTip?.weekNumber || 1}: ${activeTip?.habit || ''}): `,
+      `Practicing ${goal.competency} (Week ${activeTip?.weekNumber || 1}: ${activeTip?.habit || activeTip?.focusHabit || ''}): `,
       `Observation: ${goal.title}`,
       goal.competency,
       goal.id

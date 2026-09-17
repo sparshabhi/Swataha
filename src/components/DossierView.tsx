@@ -19,8 +19,11 @@ import {
   BeforeNowShift,
   SchoolSignal,
   User,
+  Tenant,
 } from '../types';
 import { generateDossierPDF } from '../lib/pdfGenerator';
+import { CeqhsLogo } from './CeqhsLogo';
+import { CeqhsDossierHub } from './dossier/CeqhsDossierHub';
 
 interface DossierViewProps {
   chapters: DossierChapter[];
@@ -28,6 +31,7 @@ interface DossierViewProps {
   beforeNowShifts: BeforeNowShift[];
   signals: SchoolSignal[];
   currentUser: User;
+  activeTenant?: Tenant;
 }
 
 export const DossierView: React.FC<DossierViewProps> = ({
@@ -36,8 +40,9 @@ export const DossierView: React.FC<DossierViewProps> = ({
   beforeNowShifts,
   signals,
   currentUser,
+  activeTenant,
 }) => {
-  const [viewMode, setViewMode] = useState<'book' | 'curator'>('book');
+  const [viewMode, setViewMode] = useState<'book' | 'curator' | 'hub'>('hub');
   const [selectedChapterNumber, setSelectedChapterNumber] = useState<string>('01');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfDownloaded, setPdfDownloaded] = useState(false);
@@ -80,20 +85,40 @@ export const DossierView: React.FC<DossierViewProps> = ({
       {/* Top Banner / Mode Switcher */}
       <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 shadow-2xs no-print">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <span className="text-xs uppercase tracking-wider font-semibold text-[#4A6B53]">
-              Living Annual Dossier
-            </span>
-            <h1 className="font-editorial text-3xl sm:text-4xl text-[#252525] font-normal tracking-tight mt-1">
-              CEQHS School Journey
-            </h1>
-            <p className="text-sm text-stone-600 mt-1">
-              {currentUser.schoolName} · Academic Year {currentUser.academicYear}
-            </p>
+          <div className="flex items-center gap-4">
+            <CeqhsLogo size={48} className="shrink-0" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase tracking-wider font-semibold text-[#4A6B53]">
+                  Living Annual Dossier
+                </span>
+                {activeTenant && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200">
+                    {activeTenant.code}
+                  </span>
+                )}
+              </div>
+              <h1 className="font-editorial text-3xl sm:text-4xl text-[#252525] font-normal tracking-tight mt-0.5">
+                {activeTenant ? `${activeTenant.name} Dossier` : 'CEQHS School Journey'}
+              </h1>
+              <p className="text-sm text-stone-600 mt-1">
+                {activeTenant?.region || currentUser.schoolName} · Academic Year {activeTenant?.academicYear || currentUser.academicYear}
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             <div className="flex p-1 bg-[#FAF9F5] border border-stone-300 rounded-xl">
+              <button
+                onClick={() => setViewMode('hub')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  viewMode === 'hub'
+                    ? 'bg-[#252525] text-white shadow-2xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                23-Section Studio Hub
+              </button>
               <button
                 onClick={() => setViewMode('book')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -154,6 +179,17 @@ export const DossierView: React.FC<DossierViewProps> = ({
           "Schools should not have to create a dossier at the end of the year. The dossier grows naturally throughout the year as educators practise, reflect, document, and learn."
         </p>
       </div>
+
+      {/* VIEW MODE 0: 23-SECTION DOSSIER STUDIO HUB */}
+      {viewMode === 'hub' && (
+        <div className="space-y-6">
+          <CeqhsDossierHub
+            currentUserRole="school_coordinator"
+            currentUserName={currentUser.name}
+            activeTenantId={activeTenant?.id}
+          />
+        </div>
+      )}
 
       {/* VIEW MODE 1: CURATOR / CHAPTER PROGRESS MANAGER */}
       {viewMode === 'curator' && (
@@ -218,8 +254,8 @@ export const DossierView: React.FC<DossierViewProps> = ({
         <div className="bg-[#FAF9F5] border border-stone-300 rounded-2xl p-6 sm:p-12 shadow-sm space-y-16 print:border-none print:shadow-none print:p-0 print:bg-white">
           {/* Book Cover Page */}
           <div className="text-center py-16 sm:py-24 border-b-2 border-stone-300 space-y-6">
-            <div className="w-16 h-16 rounded-2xl bg-[#4A6B53] text-white flex items-center justify-center font-editorial text-3xl font-bold mx-auto shadow-md">
-              C
+            <div className="flex justify-center mb-4">
+              <CeqhsLogo size={88} className="drop-shadow-md" />
             </div>
 
             <div className="space-y-2 max-w-2xl mx-auto">
@@ -227,18 +263,29 @@ export const DossierView: React.FC<DossierViewProps> = ({
                 Center for Emotional Intelligence & Human Skills
               </span>
               <h1 className="font-editorial text-4xl sm:text-6xl text-[#252525] font-normal tracking-tight">
-                CEQHS School Journey
+                {activeTenant ? `${activeTenant.name}` : 'CEQHS School Journey'}
               </h1>
               <p className="font-editorial italic text-stone-600 text-xl sm:text-2xl">
                 A Living Record of Human Development in a School
               </p>
+              {activeTenant && (
+                <div className="pt-2">
+                  <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-amber-50 text-amber-900 border border-amber-200">
+                    {activeTenant.code} · {activeTenant.region}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="pt-8 text-sm text-stone-700 space-y-1">
-              <p className="font-bold text-lg text-stone-900">{currentUser.schoolName}</p>
-              <p className="text-stone-500">Academic Year {currentUser.academicYear}</p>
+              <p className="font-bold text-lg text-stone-900">
+                {activeTenant?.name || currentUser.schoolName}
+              </p>
+              <p className="text-stone-500">
+                Academic Year {activeTenant?.academicYear || currentUser.academicYear}
+              </p>
               <p className="text-xs text-[#4A6B53] font-medium pt-2">
-                Verified CEQHS Learning Center Candidate
+                Verified CEQHS Learning Center Candidate · Living Dossier
               </p>
             </div>
           </div>

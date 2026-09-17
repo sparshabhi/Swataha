@@ -72,29 +72,31 @@ export function generateDossierPDF({
   // -------------------------------------------------------------
   // 1. COVER / HEADER BANNER
   // -------------------------------------------------------------
-  // Decorative top emblem block
-  doc.setFillColor(...primaryGreen);
-  doc.roundedRect(margin, y, 14, 14, 2, 2, 'F');
-  doc.setTextColor(255, 255, 255);
+  // Decorative top shield emblem
+  doc.setFillColor(13, 27, 42); // Navy
+  doc.setDrawColor(197, 160, 89); // Gold
+  doc.setLineWidth(0.7);
+  doc.roundedRect(margin, y, 16, 16, 2.5, 2.5, 'FD');
+  doc.setTextColor(223, 192, 120); // Gold
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.text('C', margin + 4.5, y + 9.5);
+  doc.setFontSize(8.5);
+  doc.text('CEQHS', margin + 1.6, y + 10.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(...primaryGreen);
   doc.text(
     'CENTER FOR EMOTIONAL INTELLIGENCE & HUMAN SKILLS',
-    margin + 18,
+    margin + 20,
     y + 5
   );
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...mutedStone);
-  doc.text('LIVING ANNUAL JOURNEY DOSSIER SUMMARY', margin + 18, y + 10);
+  doc.text('LIVING ANNUAL MULTI-TENANT JOURNEY DOSSIER SUMMARY', margin + 20, y + 10);
 
-  y += 20;
+  y += 22;
 
   // Title
   doc.setFont('helvetica', 'bold');
@@ -355,5 +357,176 @@ export function generateDossierPDF({
 
   // Sanitize filename
   const cleanSchool = currentUser.schoolName.replace(/[^a-zA-Z0-9]/g, '_');
-  doc.save(`CEQHS_Dossier_Summary_${cleanSchool}.pdf`);
+  doc.save(`CEQHS_Institutional_Dossier_${cleanSchool}.pdf`);
+}
+
+export interface IndividualDossierPDFData {
+  educator: User;
+  entries: JourneyEntry[];
+  beforeNowShifts: BeforeNowShift[];
+}
+
+/**
+ * Generates an Individual Educator Living Journey Dossier PDF
+ */
+export function generateIndividualDossierPDF({
+  educator,
+  entries,
+  beforeNowShifts,
+}: IndividualDossierPDFData): void {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 18;
+  const contentWidth = pageWidth - margin * 2;
+  let y = margin;
+
+  const primaryGreen: [number, number, number] = [74, 107, 83];
+  const charcoal: [number, number, number] = [37, 37, 37];
+  const mutedStone: [number, number, number] = [105, 105, 100];
+  const lineGrey: [number, number, number] = [225, 222, 214];
+
+  const checkPageBreak = (neededHeight: number) => {
+    if (y + neededHeight > pageHeight - margin - 12) {
+      doc.addPage();
+      y = margin;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...mutedStone);
+      doc.text(
+        `CEQHS Individual Living Dossier · ${educator.name} (${educator.schoolName})`,
+        margin,
+        y
+      );
+      doc.setDrawColor(...lineGrey);
+      doc.setLineWidth(0.3);
+      doc.line(margin, y + 2, pageWidth - margin, y + 2);
+      y += 8;
+    }
+  };
+
+  // Header Banner
+  doc.setFillColor(...primaryGreen);
+  doc.roundedRect(margin, y, 14, 14, 3, 3, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('C', margin + 5, y + 9.5);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...primaryGreen);
+  doc.text('CEQHS INDIVIDUAL LIVING DOSSIER', margin + 18, y + 5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedStone);
+  doc.text('Learn · Practise · Reflect · Evidence · Grow', margin + 18, y + 10);
+  y += 20;
+
+  // Educator Name & School
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(...charcoal);
+  doc.text(educator.name, margin, y);
+  y += 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(...mutedStone);
+  doc.text(`${educator.title} · ${educator.schoolName} (Academic Year ${educator.academicYear})`, margin, y);
+  y += 10;
+
+  // Personal Intention Box
+  doc.setFillColor(234, 240, 235);
+  doc.roundedRect(margin, y, contentWidth, 18, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...primaryGreen);
+  doc.text('PERSONAL DEVELOPMENTAL INTENTION', margin + 4, y + 5.5);
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.setTextColor(...charcoal);
+  doc.text(`"${educator.intention || 'Hold the curious pause before correcting.'}"`, margin + 4, y + 12);
+  y += 24;
+
+  // Educator Practice Moments
+  const educatorMoments = entries.filter((e) => e.authorId === educator.id || e.includedInDossier);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(...primaryGreen);
+  doc.text('1. Practice Moments That Mattered', margin, y);
+  y += 6;
+
+  educatorMoments.slice(0, 4).forEach((m) => {
+    checkPageBreak(25);
+    doc.setFillColor(250, 249, 245);
+    doc.setDrawColor(...lineGrey);
+    doc.roundedRect(margin, y, contentWidth, 20, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...charcoal);
+    doc.text(m.title, margin + 4, y + 5.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...mutedStone);
+    doc.text(`${m.date} · Theme: ${m.themeTitle || 'General Practice'}`, margin + 4, y + 10);
+
+    const desc = m.whyDoesThisMatter || m.description;
+    const splitDesc = doc.splitTextToSize(desc, contentWidth - 8);
+    doc.text(splitDesc[0] || '', margin + 4, y + 15);
+    y += 24;
+  });
+
+  // Shifts
+  checkPageBreak(30);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(...primaryGreen);
+  doc.text('2. Developmental Growth Shifts (Baseline → Now)', margin, y);
+  y += 6;
+
+  beforeNowShifts.slice(0, 3).forEach((shift) => {
+    checkPageBreak(20);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...charcoal);
+    doc.text(shift.theme, margin, y);
+    y += 4.5;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(150, 60, 40);
+    doc.text(`Baseline (Before): "${shift.before}"`, margin + 4, y);
+    y += 4;
+
+    doc.setTextColor(50, 110, 65);
+    doc.text(`Current (Now): "${shift.now}"`, margin + 4, y);
+    y += 7;
+  });
+
+  // Footer page numbers
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...mutedStone);
+    doc.text(
+      `Page ${i} of ${totalPages} · CEQHS Individual Living Record · Confidential to Educator`,
+      pageWidth / 2 - 30,
+      pageHeight - 8
+    );
+  }
+
+  const cleanName = educator.name.replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`CEQHS_Individual_Dossier_${cleanName}.pdf`);
 }

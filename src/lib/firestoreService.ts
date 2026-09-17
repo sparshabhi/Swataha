@@ -196,3 +196,52 @@ export async function deletePersonalGoalFromFirestore(
   }
 }
 
+/**
+ * Clear all user documents, subcollections, journey entries, goals, game progress,
+ * and data from Firestore to ensure a completely fresh and clean environment.
+ */
+export async function clearAllFirestoreData(userId?: string): Promise<boolean> {
+  try {
+    const targetUserIds = userId
+      ? [userId]
+      : ['maya', 'marcus', 'elena', 'saugat', 'aris', 'user-saugat-singh'];
+
+    for (const uid of targetUserIds) {
+      try {
+        // Delete journey entries subcollection
+        const entriesRef = collection(db, USER_COLLECTION, uid, 'journey_entries');
+        const entriesSnap = await getDocs(entriesRef);
+        for (const docSnap of entriesSnap.docs) {
+          await deleteDoc(docSnap.ref);
+        }
+      } catch (e) {
+        console.warn(`Firestore: Could not clear journey entries for ${uid}:`, e);
+      }
+
+      try {
+        // Delete development goals subcollection
+        const goalsRef = collection(db, USER_COLLECTION, uid, 'development_goals');
+        const goalsSnap = await getDocs(goalsRef);
+        for (const docSnap of goalsSnap.docs) {
+          await deleteDoc(docSnap.ref);
+        }
+      } catch (e) {
+        console.warn(`Firestore: Could not clear goals for ${uid}:`, e);
+      }
+
+      try {
+        // Delete game_progress
+        const progRef = doc(db, USER_COLLECTION, uid, 'game_progress', 'current');
+        await deleteDoc(progRef);
+      } catch (e) {
+        console.warn(`Firestore: Could not clear game progress for ${uid}:`, e);
+      }
+    }
+    return true;
+  } catch (error) {
+    console.warn('Firestore: Could not clear database records:', error);
+    return false;
+  }
+}
+
+

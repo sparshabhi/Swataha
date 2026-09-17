@@ -19,9 +19,14 @@ import {
   Cloud,
   User as UserIcon,
   Award,
+  LogOut,
+  Building2,
+  Bell,
+  BarChart3,
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { FirebaseUser } from '../lib/firebase';
+import { CeqhsLogo } from './CeqhsLogo';
 
 interface NavigationProps {
   currentTab: string;
@@ -32,6 +37,12 @@ interface NavigationProps {
   onOpenCaptureModal: () => void;
   firebaseUser: FirebaseUser | null;
   onOpenProfileModal: () => void;
+  onLogout?: () => void;
+  onSwitchToCeqhsPortal?: () => void;
+  activeTenantName?: string;
+  activeTenantCode?: string;
+  unreadNotificationCount?: number;
+  onOpenNotifications?: () => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -43,6 +54,12 @@ export const Navigation: React.FC<NavigationProps> = ({
   onOpenCaptureModal,
   firebaseUser,
   onOpenProfileModal,
+  onLogout,
+  onSwitchToCeqhsPortal,
+  activeTenantName,
+  activeTenantCode,
+  unreadNotificationCount = 0,
+  onOpenNotifications,
 }) => {
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -60,6 +77,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   ];
 
   const adminItems = [
+    { id: 'impact-evidence', label: 'Impact & Evidence', icon: BarChart3, role: 'all', badge: 'Gr 1–5' },
+    { id: 'tenants', label: 'Tenants & Users', icon: Building2, role: 'coordinator', badge: 'Platform' },
     { id: 'school', label: 'School Dashboard', icon: School, role: 'coordinator' },
     { id: 'ceqhs-review', label: 'CEQHS Review', icon: ShieldCheck, role: 'admin' },
   ];
@@ -68,39 +87,72 @@ export const Navigation: React.FC<NavigationProps> = ({
     <>
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 bg-[#F4F1EA] border-r border-stone-200 h-screen sticky top-0 shrink-0 select-none">
-        {/* Brand Header */}
-        <div className="p-6 border-b border-stone-200/80 bg-[#EFECE4]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#4A6B53] text-white flex items-center justify-center font-editorial text-lg font-bold shadow-xs">
-              C
-            </div>
+        {/* Brand Header with Official Logo */}
+        <div className="p-4 border-b border-stone-200/80 bg-[#EFECE4]">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img
+              src="https://ibb.co/8nxMTMnN"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (target.src !== 'https://i.ibb.co/NgNxQxgt/Untitled-design-2.png') {
+                  target.src = 'https://i.ibb.co/NgNxQxgt/Untitled-design-2.png';
+                } else if (target.src !== '/ceqhs-logo.png') {
+                  target.src = '/ceqhs-logo.png';
+                }
+              }}
+              alt="CEQHS Official Logo"
+              style={{
+                height: '55px',
+                width: 'auto',
+                objectFit: 'contain',
+                flexShrink: 0,
+                borderRadius: '0',
+              }}
+            />
             <div>
-              <span className="font-editorial text-lg font-normal text-[#252525] tracking-tight block leading-tight">
-                CEQHS Living Journey
+              <span className="font-editorial text-lg font-bold text-[#252525] tracking-tight block leading-tight">
+                CEQHS Platform
               </span>
-              <span className="text-[11px] text-[#6F6F6A] font-medium tracking-wide">
-                Notice · Practise · Reflect · Grow
+              <span className="text-[10px] text-[#4A6B53] font-semibold tracking-wide block">
+                Learn · Practise · Reflect · Evidence · Grow
               </span>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-stone-200 flex items-center justify-between text-xs text-stone-600">
-            <div className="truncate font-medium">{currentUser.schoolName}</div>
-            <span className="px-1.5 py-0.5 rounded-sm bg-stone-200/70 text-stone-700 text-[10px] font-semibold">
-              {currentUser.academicYear}
+          <div className="mt-3.5 pt-2.5 border-t border-stone-200/90 flex items-center justify-between text-xs text-stone-600">
+            <div className="truncate font-semibold text-stone-800 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+              <span className="truncate">{activeTenantName || currentUser.schoolName}</span>
+            </div>
+            <span className="px-1.5 py-0.5 rounded-sm bg-amber-100/80 text-amber-900 border border-amber-200/60 text-[10px] font-mono font-bold shrink-0">
+              {activeTenantCode || 'TENANT-A'}
             </span>
           </div>
         </div>
 
-        {/* Quick Add CTA */}
-        <div className="p-4 border-b border-stone-200/70">
+        {/* Quick Add & Notifications CTA */}
+        <div className="p-4 border-b border-stone-200/70 flex items-center gap-2">
           <button
             onClick={onOpenCaptureModal}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#4A6B53] text-white text-sm font-medium hover:bg-[#3c5743] shadow-xs hover:shadow-md transition-all active:scale-[0.99]"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-[#4A6B53] text-white text-sm font-medium hover:bg-[#3c5743] shadow-xs hover:shadow-md transition-all active:scale-[0.99]"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Add to Your Journey</span>
+            <span>Add Entry</span>
           </button>
+          {onOpenNotifications && (
+            <button
+              onClick={onOpenNotifications}
+              className="relative p-2.5 rounded-xl border border-stone-300/80 bg-white hover:bg-stone-50 text-stone-700 hover:text-stone-900 transition-all shadow-2xs cursor-pointer shrink-0"
+              title="Notifications & Dispatches"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-[#F4F1EA]">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Navigation Links */}
@@ -154,18 +206,31 @@ export const Navigation: React.FC<NavigationProps> = ({
               <button
                 key={item.id}
                 onClick={() => onSelectTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   isActive
                     ? 'bg-[#FAF3E7] text-[#252525] font-semibold'
                     : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
                 }`}
               >
-                <Icon
-                  className={`w-4 h-4 ${
-                    isActive ? 'text-[#C88A2E]' : 'text-stone-500'
-                  }`}
-                />
-                <span>{item.label}</span>
+                <div className="flex items-center gap-3">
+                  <Icon
+                    className={`w-4 h-4 ${
+                      isActive ? 'text-[#C88A2E]' : 'text-stone-500'
+                    }`}
+                  />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      isActive
+                        ? 'bg-[#C88A2E]/20 text-[#C88A2E] font-bold'
+                        : 'bg-stone-200 text-stone-600'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -268,24 +333,80 @@ export const Navigation: React.FC<NavigationProps> = ({
               ))}
             </div>
           )}
+
+          {onSwitchToCeqhsPortal && (
+            <button
+              onClick={onSwitchToCeqhsPortal}
+              className="w-full mt-2 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1B3626] hover:bg-[#284f38] text-white text-xs font-bold transition-all shadow-xs"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>CEQHS Dashboard</span>
+            </button>
+          )}
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="w-full mt-1.5 flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-stone-200/80 bg-white/50 hover:bg-white text-stone-600 hover:text-red-700 text-xs font-medium transition-colors shadow-2xs"
+              title="Lock and Log Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Log Out</span>
+            </button>
+          )}
         </div>
       </aside>
 
       {/* Mobile Top Header */}
-      <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#F4F1EA] border-b border-stone-200 sticky top-0 z-40">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#4A6B53] text-white flex items-center justify-center font-editorial text-sm font-bold">
-            C
-          </div>
+      <header className="lg:hidden flex items-center justify-between px-4 py-2 bg-[#F4F1EA] border-b border-stone-200 sticky top-0 z-40">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img
+            src="https://ibb.co/8nxMTMnN"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (target.src !== 'https://i.ibb.co/NgNxQxgt/Untitled-design-2.png') {
+                target.src = 'https://i.ibb.co/NgNxQxgt/Untitled-design-2.png';
+              } else if (target.src !== '/ceqhs-logo.png') {
+                target.src = '/ceqhs-logo.png';
+              }
+            }}
+            alt="CEQHS Official Logo"
+            style={{
+              height: '55px',
+              width: 'auto',
+              objectFit: 'contain',
+              flexShrink: 0,
+              borderRadius: '0',
+            }}
+          />
           <div>
-            <span className="font-editorial text-base font-medium text-stone-900 leading-none block">
-              CEQHS Living Journey
+            <div className="flex items-center gap-1.5" style={{ display: 'flex', alignItems: 'center' }}>
+              <span className="font-editorial text-base font-bold text-stone-900 leading-none block">
+                CEQHS
+              </span>
+              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                {activeTenantCode || 'TENANT-A'}
+              </span>
+            </div>
+            <span className="text-[10px] text-stone-500 truncate block max-w-[150px]">
+              {activeTenantName || currentUser.schoolName}
             </span>
-            <span className="text-[10px] text-stone-500">{currentUser.schoolName}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenNotifications && (
+            <button
+              onClick={onOpenNotifications}
+              className="relative p-1.5 text-stone-600 rounded-lg hover:bg-stone-200"
+              aria-label="View notifications"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-[#F4F1EA]" />
+              )}
+            </button>
+          )}
           <button
             onClick={onOpenCaptureModal}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#4A6B53] text-white text-xs font-semibold shadow-xs"
@@ -418,6 +539,22 @@ export const Navigation: React.FC<NavigationProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Mobile Log Out */}
+            {onLogout && (
+              <div className="pt-3 border-t border-stone-200">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="w-full p-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-50 text-red-700 flex items-center justify-center gap-2 text-xs font-semibold transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Log Out (Lock App)</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
