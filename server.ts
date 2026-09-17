@@ -6,6 +6,8 @@ import { CEQHS_CURRICULUM_SYSTEM_PROMPT } from './server/curriculumSystemPrompt'
 
 let genAIClient: GoogleGenAI | null = null;
 
+const REQUIRED_DRAFT_FIELDS = ['practiceName', 'curriculumAnchor', 'gradeScope', 'phaseNumber'] as const;
+
 function getGenAI(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
@@ -13,6 +15,38 @@ function getGenAI(): GoogleGenAI | null {
     genAIClient = new GoogleGenAI({ apiKey });
   }
   return genAIClient;
+}
+
+function validateRequiredFields(body: any, requiredFields: readonly string[]) {
+  const missing = requiredFields.filter((field) => {
+    const value = body?.[field];
+    return value === undefined || value === null || value === '';
+  });
+
+  return missing;
+}
+
+async function generateWithFallback<T>({
+  aiRequest,
+  fallback,
+  context,
+}: {
+  aiRequest: () => Promise<T>;
+  fallback: () => T;
+  context: string;
+}): Promise<T> {
+  const ai = getGenAI();
+
+  if (!ai) {
+    return fallback();
+  }
+
+  try {
+    return await aiRequest();
+  } catch (error: any) {
+    console.warn(`${context} failed, using fallback:`, error?.message || error);
+    return fallback();
+  }
 }
 
 async function startServer() {
@@ -46,9 +80,10 @@ async function startServer() {
         notes,
       } = req.body;
 
-      if (!practiceName || !curriculumAnchor || !gradeScope || !phaseNumber) {
+      const missingFields = validateRequiredFields(req.body, REQUIRED_DRAFT_FIELDS);
+      if (missingFields.length > 0) {
         return res.status(400).json({
-          error: 'Missing required parameters: practiceName, curriculumAnchor, gradeScope, and phaseNumber are required.',
+          error: `Missing required parameters: ${missingFields.join(', ')}.`,
         });
       }
 
@@ -106,11 +141,23 @@ Disconfirming Indicators:
 - If Nepal NC: NCF 2076. CAS means Community and Service. Grades 1–3 is integrated (Hamro Serofero); Grades 4–5 is subject-based. Never use SEL; use human values and holistic development.
 3. Rationale must be anchor-specific and minimum 80 words. Never claim "IB-approved", "Cambridge-accredited", "proves", or "guarantees".`;
 
-      const ai = getGenAI();
-      let draftText = '';
+      const draftText = await generateWithFallback({
+        context: 'Curriculum draft generation',
+        aiRequest: async () => {
+          const ai = getGenAI();
+          if (!ai) {
+            return generateFallbackDraft({
+              practiceName,
+              curriculumAnchor,
+              gradeScope,
+              phaseNumber,
+              frameworkOutcome,
+              sourceCitation,
+              alignmentType,
+              evidenceTier,
+            });
+          }
 
-      if (ai) {
-        try {
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: userPrompt,
@@ -119,10 +166,11 @@ Disconfirming Indicators:
               temperature: 0.2,
             },
           });
-          draftText = response.text || '';
-        } catch (apiErr: any) {
-          console.warn('Gemini API call failed or busy, using high-integrity curriculum fallback:', apiErr.message);
-          draftText = generateFallbackDraft({
+
+          return response.text || '';
+        },
+        fallback: () =>
+          generateFallbackDraft({
             practiceName,
             curriculumAnchor,
             gradeScope,
@@ -131,24 +179,9 @@ Disconfirming Indicators:
             sourceCitation,
             alignmentType,
             evidenceTier,
-          });
-        }
-      } else {
-        // Deterministic, high-integrity fallback conforming strictly to the system prompt
-        // in case GEMINI_API_KEY has not yet been injected in development
-        draftText = generateFallbackDraft({
-          practiceName,
-          curriculumAnchor,
-          gradeScope,
-          phaseNumber,
-          frameworkOutcome,
-          sourceCitation,
-          alignmentType,
-          evidenceTier,
-        });
-      }
+          }),
+      });
 
-      // Parse structured output from the draft text
       const parsedRecord = parseDraftTextToRecord(draftText, {
         practiceName,
         curriculumAnchor,
@@ -160,7 +193,7 @@ Disconfirming Indicators:
         success: true,
         draftText,
         parsedRecord,
-        usingFallback: !ai,
+        usingFallback: !getGenAI(),
       });
     } catch (err: any) {
       console.error('Error generating curriculum draft mapping:', err);
@@ -183,7 +216,12 @@ Disconfirming Indicators:
         timetableConstraints = '15-min daily advisory, 45-min monthly staff circle',
       } = req.body;
 
-      const ai = getGenAI();
+      const missingFields = validateRequiredFields(req.body, ['schoolName']);
+      if (missingFields.length > 0 && Object.keys(req.body || {}).length === 0) {
+        return res.status(400).json({
+          error: 'Request body is required.',
+        });
+      }
 
       const planSystemPrompt = `You are a CEQHS implementation planner for schools. Create a draft annual school plan using the approved CEQHS core and curriculum adapter.
 Non-negotiables:
@@ -313,7 +351,7 @@ Return valid JSON with:
     "Approval of scheduled faculty workshop dates in school master calendar",
     "Moderator verification of Year 1 Foundation Evidence Dossier"
   ],
-  "rationale": "This plan directly embeds into Swatara Core School's IB PYP morning advisory and transdisciplinary units. By pacing implementation from internal self-awareness (Term 1) to relational empathy (Term 2) to restorative community agency (Term 3), students and educators build sustainable habits without overwhelming the academic timetable.",
+  "rationale": "This plan directly embeds into Swatara Core School's IB PYP morning advisory and transdisciplinary units. By pacing implementation from internal self-awareness (Term 1) to relational repair (Term 3), the plan honors both developmental readiness and staff capacity. The sequence keeps daily observable routines manageable while building toward evidence-based reflection and community restoration.",
   "confidence": "High (94%)",
   "assumptions": [
     "15-minute morning advisory block remains protected from schedule encroachment.",
@@ -327,8 +365,14 @@ Return valid JSON with:
 
       let planJson: any = null;
 
-      if (ai) {
-        try {
+      const generatedPlan = await generateWithFallback({
+        context: 'Plan generation',
+        aiRequest: async () => {
+          const ai = getGenAI();
+          if (!ai) {
+            return null;
+          }
+
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: userPrompt,
@@ -338,143 +382,140 @@ Return valid JSON with:
               temperature: 0.2,
             },
           });
-          const rawText = response.text || '';
-          planJson = JSON.parse(rawText);
-        } catch (apiErr: any) {
-          console.warn('AI plan generation failed, falling back to canonical structured plan:', apiErr.message);
-        }
-      }
 
-      if (!planJson) {
-        // Deterministic high-integrity plan fallback
-        planJson = {
-          planTitle: `${schoolName} — ${awardPhase} Implementation Plan`,
-          awardPhase,
-          curriculumAdapter,
-          priorityDomains: ['Self-Regulation', 'Self-Awareness', 'Relationship Skills'],
-          yearlyObjectives: [
-            'Embed daily emotional self-awareness and mindful micro-pause routines in all Grades 1–5 homerooms.',
-            'Cultivate educator nervous-system regulation and stress resilience through monthly Trigger & Response reflections.',
-            'Shift peer conflict resolution from punitive escalation to student-initiated restorative repair.',
-          ],
-          terms: [
-            {
-              termNumber: 1,
-              termTitle: 'Term 1: Grounding, Shared Vocabulary & Micro-Pauses',
-              focus: 'Daily Emotion Weather Check-In, Classroom Mindful Micro-Pause, and Staff Self-Regulation',
-              objectives: [
-                'Train 100% of primary faculty in the 3-breath curious pause and weather metaphor.',
-                'Launch Daily Emotion Weather Check-In during 15-minute morning advisory.',
-                'Establish baseline affective vocabulary and student regulation measures.',
-              ],
-              staffWorkshops: [
-                'Workshop 1: The Curious Pause — Somatic Self-Regulation for Educators (45 mins)',
-                'Workshop 2: Facilitating the Emotion Weather Check-In Without Judgment (45 mins)',
-              ],
-              classroomPractices: [
-                'Daily Emotion Weather Check-In (Grades 1–5, 8–10 mins every morning)',
-                'Classroom Mindful Micro-Pause (Grades 1–5, 3 mins during post-recess transitions)',
-              ],
-              learnerActivities: [
-                'My Weather Token Crafting (Grades 1–3)',
-                'Vocabulary of the Inner Sky Journaling (Grades 4–5)',
-              ],
-              coachingAndFacilitation: [
-                'Bi-weekly classroom walkthroughs by CEQHS facilitator with non-evaluative coaching notes',
-                'Grade-level team debriefs on transition friction points',
-              ],
-              familyCommunity: [
-                'Parent Living Journey orientation letter explaining the meteorological emotion framework',
-                'Home Curious Pause guide for bedtime and homework transitions',
-              ],
-            },
-            {
-              termNumber: 2,
-              termTitle: 'Term 2: Social Awareness & Perspective-Taking',
-              focus: 'Perspective-Taking Circles and Peer Relationship Building',
-              objectives: [
-                'Introduce weekly Perspective-Taking Circles in Grades 3–5.',
-                'Support faculty in navigating mid-year cognitive fatigue with monthly trigger reflections.',
-              ],
-              staffWorkshops: [
-                'Workshop 3: Navigating Workplace Strain and Emotional Buttons (45 mins)',
-              ],
-              classroomPractices: [
-                'Perspective-Taking Circles (Grades 3–5, 25 mins weekly)',
-                'Continued Daily Emotion Weather Check-In & Micro-Pauses',
-              ],
-              learnerActivities: [
-                'Stepping Into Your Shoes Empathy Prompts (Grades 3–5)',
-              ],
-              coachingAndFacilitation: [
-                'Peer educator observation rounds with curious inquiry protocols',
-              ],
-              familyCommunity: [
-                'Community Coffee Morning: Developing Empathy in Primary Learners',
-              ],
-            },
-            {
-              termNumber: 3,
-              termTitle: 'Term 3: Restorative Repair & Values-in-Action',
-              focus: 'Restorative conversations and student-led community wellbeing initiatives',
-              objectives: [
-                'Establish the playground Restorative Repair Bench.',
-                'Prepare Year 1 Foundation Living Dossier submission for moderated review.',
-              ],
-              staffWorkshops: [
-                'Workshop 4: Moving Beyond Forced Apologies to Restorative Dignity (45 mins)',
-              ],
-              classroomPractices: [
-                '4-Step Repair Conversations (Grades 1–5, on-demand during friction)',
-                'Values-in-Action mini-projects connected to IB PYP Action',
-              ],
-              learnerActivities: [
-                'Restorative Ambassador Training for Grade 5 learners',
-                'Year-End Reflection Living Portfolio Assembly',
-              ],
-              coachingAndFacilitation: [
-                'Review and compilation of Year 1 Living Dossier evidence artifacts',
-              ],
-              familyCommunity: [
-                'End-of-Year Community Celebration of Human Growth & Resilience',
-              ],
-            },
-          ],
-          implementationRisks: [
-            'Inconsistent delivery if morning advisory is crowded out by administrative notices.',
-            'Teacher fatigue during high-stakes reporting periods if adult micro-pauses are skipped.',
-            'Multilingual students in Grade 3 feeling excluded if visual gestures are not provided.',
-          ],
-          reviewCheckpoints: [
-            'Term 1 Mid-Point Observer Walkthrough (Week 6)',
-            'Term 1 Evidence Dossier Review & Reflection Checkpoint (Week 12)',
-            'Term 2 Mid-Year Climate & Baseline Re-Measure (Week 20)',
-            'Year 1 Foundation Moderated Award Evaluation (Week 34)',
-          ],
-          itemsRequiringHumanApproval: [
-            'Approval of Term 1 Daily Emotion Weather Check-In and Mindful Micro-Pause for active rollout',
-            'Approval of scheduled faculty workshop dates in school master calendar',
-            'Moderator verification of Year 1 Foundation Evidence Dossier',
-          ],
-          rationale: `This plan directly embeds into ${schoolName}'s ${curriculumAdapter} morning advisory and transdisciplinary units. By pacing implementation from internal self-awareness (Term 1) to relational empathy (Term 2) to restorative community agency (Term 3), students and educators build sustainable habits without overwhelming the academic timetable.`,
-          confidence: 'High (94%)',
-          assumptions: [
-            '15-minute morning advisory block remains protected from schedule encroachment.',
-            'Lead coordinator and principal actively participate in opening staff workshops.',
-          ],
-          warnings: [
-            'Do not treat attendance counts as mastery. Verification requires documented evidence of practice fidelity.',
-            'Never use diagnostic or medicalized labeling in student observation records.',
-          ],
-        };
-      }
+          const rawText = response.text || '';
+          return rawText ? JSON.parse(rawText) : null;
+        },
+        fallback: () => null,
+      });
+
+      planJson = generatedPlan || {
+        planTitle: `${schoolName} — ${awardPhase} Implementation Plan`,
+        awardPhase,
+        curriculumAdapter,
+        priorityDomains: ['Self-Regulation', 'Self-Awareness', 'Relationship Skills'],
+        yearlyObjectives: [
+          'Embed daily emotional self-awareness and mindful micro-pause routines in all Grades 1–5 homerooms.',
+          'Cultivate educator nervous-system regulation and stress resilience through monthly Trigger & Response reflections.',
+          'Shift peer conflict resolution from punitive escalation to student-initiated restorative repair.',
+        ],
+        terms: [
+          {
+            termNumber: 1,
+            termTitle: 'Term 1: Grounding, Shared Vocabulary & Micro-Pauses',
+            focus: 'Daily Emotion Weather Check-In, Classroom Mindful Micro-Pause, and Staff Self-Regulation',
+            objectives: [
+              'Train 100% of primary faculty in the 3-breath curious pause and weather metaphor.',
+              'Launch Daily Emotion Weather Check-In during 15-minute morning advisory.',
+              'Establish baseline affective vocabulary and student regulation measures.',
+            ],
+            staffWorkshops: [
+              'Workshop 1: The Curious Pause — Somatic Self-Regulation for Educators (45 mins)',
+              'Workshop 2: Facilitating the Emotion Weather Check-In Without Judgment (45 mins)',
+            ],
+            classroomPractices: [
+              'Daily Emotion Weather Check-In (Grades 1–5, 8–10 mins every morning)',
+              'Classroom Mindful Micro-Pause (Grades 1–5, 3 mins during post-recess transitions)',
+            ],
+            learnerActivities: [
+              'My Weather Token Crafting (Grades 1–3)',
+              'Vocabulary of the Inner Sky Journaling (Grades 4–5)',
+            ],
+            coachingAndFacilitation: [
+              'Bi-weekly classroom walkthroughs by CEQHS facilitator with non-evaluative coaching notes',
+              'Grade-level team debriefs on transition friction points',
+            ],
+            familyCommunity: [
+              'Parent Living Journey orientation letter explaining the meteorological emotion framework',
+              'Home Curious Pause guide for bedtime and homework transitions',
+            ],
+          },
+          {
+            termNumber: 2,
+            termTitle: 'Term 2: Social Awareness & Perspective-Taking',
+            focus: 'Perspective-Taking Circles and Peer Relationship Building',
+            objectives: [
+              'Introduce weekly Perspective-Taking Circles in Grades 3–5.',
+              'Support faculty in navigating mid-year cognitive fatigue with monthly trigger reflections.',
+            ],
+            staffWorkshops: [
+              'Workshop 3: Navigating Workplace Strain and Emotional Buttons (45 mins)',
+            ],
+            classroomPractices: [
+              'Perspective-Taking Circles (Grades 3–5, 25 mins weekly)',
+              'Continued Daily Emotion Weather Check-In & Micro-Pauses',
+            ],
+            learnerActivities: [
+              'Stepping Into Your Shoes Empathy Prompts (Grades 3–5)',
+            ],
+            coachingAndFacilitation: [
+              'Peer educator observation rounds with curious inquiry protocols',
+            ],
+            familyCommunity: [
+              'Community Coffee Morning: Developing Empathy in Primary Learners',
+            ],
+          },
+          {
+            termNumber: 3,
+            termTitle: 'Term 3: Restorative Repair & Values-in-Action',
+            focus: 'Restorative conversations and student-led community wellbeing initiatives',
+            objectives: [
+              'Establish the playground Restorative Repair Bench.',
+              'Prepare Year 1 Foundation Living Dossier submission for moderated review.',
+            ],
+            staffWorkshops: [
+              'Workshop 4: Moving Beyond Forced Apologies to Restorative Dignity (45 mins)',
+            ],
+            classroomPractices: [
+              '4-Step Repair Conversations (Grades 1–5, on-demand during friction)',
+              'Values-in-Action mini-projects connected to IB PYP Action',
+            ],
+            learnerActivities: [
+              'Restorative Ambassador Training for Grade 5 learners',
+              'Year-End Reflection Living Portfolio Assembly',
+            ],
+            coachingAndFacilitation: [
+              'Review and compilation of Year 1 Living Dossier evidence artifacts',
+            ],
+            familyCommunity: [
+              'End-of-Year Community Celebration of Human Growth & Resilience',
+            ],
+          },
+        ],
+        implementationRisks: [
+          'Inconsistent delivery if morning advisory is crowded out by administrative notices.',
+          'Teacher fatigue during high-stakes reporting periods if adult micro-pauses are skipped.',
+          'Multilingual students in Grade 3 feeling excluded if visual gestures are not provided.',
+        ],
+        reviewCheckpoints: [
+          'Term 1 Mid-Point Observer Walkthrough (Week 6)',
+          'Term 1 Evidence Dossier Review & Reflection Checkpoint (Week 12)',
+          'Term 2 Mid-Year Climate & Baseline Re-Measure (Week 20)',
+          'Year 1 Foundation Moderated Award Evaluation (Week 34)',
+        ],
+        itemsRequiringHumanApproval: [
+          'Approval of Term 1 Daily Emotion Weather Check-In and Mindful Micro-Pause for active rollout',
+          'Approval of scheduled faculty workshop dates in school master calendar',
+          'Moderator verification of Year 1 Foundation Evidence Dossier',
+        ],
+        rationale: `This plan directly embeds into ${schoolName}'s ${curriculumAdapter} morning advisory and transdisciplinary units. By pacing implementation from internal self-awareness (Term 1) to relational repair (Term 3), the plan honors both developmental readiness and staff capacity. The sequence keeps daily observable routines manageable while building toward evidence-based reflection and community restoration.`,
+        confidence: 'High (94%)',
+        assumptions: [
+          '15-minute morning advisory block remains protected from schedule encroachment.',
+          'Lead coordinator and principal actively participate in opening staff workshops.',
+        ],
+        warnings: [
+          'Do not treat attendance counts as mastery. Verification requires documented evidence of practice fidelity.',
+          'Never use diagnostic or medicalized labeling in student observation records.',
+        ],
+      };
 
       res.json({
         success: true,
         result: planJson,
         requiresHumanReview: true,
         generatedAt: new Date().toISOString(),
-        model: ai ? 'gemini-2.5-flash' : 'ceqhs-deterministic-planner-v1',
+        model: getGenAI() ? 'gemini-2.5-flash' : 'ceqhs-deterministic-planner-v1',
       });
     } catch (err: any) {
       console.error('Error composing AI plan:', err);
@@ -628,7 +669,7 @@ Alignment Type:     Contributing
 Evidence Tier:      Tier 2 — Reasoned
 
 Rationale:
-The daily execution of ${practiceName} is specifically designed to support the IB Primary Years Programme Approaches to Learning (ATL) self-management category. Within the affective sub-skills cluster, PYP students are expected to self-regulate emotional states and cultivate mindful pause before responding to inquiry-based challenges. Rather than creating a parallel assessment structure, this practice embeds directly into the transdisciplinary morning unit, offering students regular experiential routines to observe their affective conditions without punitive judgment, thereby directly strengthening their capacity for self-regulation in inquiry spaces.
+The daily execution of ${practiceName} is specifically designed to support the IB Primary Years Programme Approaches to Learning (ATL) self-management category. Within the affective sub-skills cluster, learners are supported to regulate attention, emotions, and action. This makes the practice a contributing alignment because it reinforces self-management rather than replacing a formal academic strand. In classroom use, the routine strengthens reflection and regulation across inquiry, transitions, and social collaboration. It is therefore appropriate as a contextual support for learner agency while being framed as an enacted routine rather than a direct curriculum substitute.
 
 Indicators of Working:
 - Students initiate the ${practiceName} reflection vocabulary during transdisciplinary transitions.
@@ -662,7 +703,7 @@ Alignment Type:     Contextual
 Evidence Tier:      Tier 2 — Reasoned
 
 Rationale:
-This mapping operates strictly as a Contextual alignment against the Oxford International Curriculum Wellbeing scheme of work. In the Oxford framework, Wellbeing is taught as an explicit timetabled subject with distinct curriculum objectives rather than as a generalized atmosphere. The ${practiceName} practice provides the contextual environment that reinforces and distributes emotional awareness competencies across the school day. It does not attempt to replace the timetabled Oxford lessons, but equips primary learners to identify physiological and emotional markers in real time.
+This mapping operates strictly as a Contextual alignment against the Oxford International Curriculum Wellbeing scheme of work. In the Oxford framework, Wellbeing is taught as an explicit timetabled subject and the CEQHS practice functions as a reinforcement rather than a replacement. The routine helps children recognize bodily cues, emotions, and transitions in a manner that supports the active social and emotional learning intended by the curriculum. It contributes to the classroom culture in which wellbeing is practiced, but it should not be treated as a substitute for formal Oxford Wellbeing instruction.
 
 Indicators of Working:
 - Learners refer to concepts from timetabled Oxford Wellbeing lessons during daily ${practiceName}.
@@ -696,7 +737,7 @@ Alignment Type:     Contributing
 Evidence Tier:      Tier 2 — Reasoned
 
 Rationale:
-Because Cambridge International documentation explicitly treats emotional intelligence constructs as contested in academic literature, this mapping intentionally avoids theoretical EQ terminology and anchors strictly on observable, behavioural self-regulation. The practice of ${practiceName} contributes directly to cultivating the Cambridge 'Reflective' and 'Responsible' learner attributes. Students learn concrete metacognitive observation routines to observe distraction, regulate energy, and re-engage with structured academic tasks without invoking emotional dogma.
+This mapping is intentionally framed as a Contributing alignment rather than a direct curriculum match. The Cambridge learner attribute language emphasizes observable reflection, attention, and purposeful response, which are supported by daily self-regulation routines. In practice, ${practiceName} provides students with structured opportunities to notice focus and reset attention before continuing with academic tasks. The alignment is sound when grounded in behaviour and evidence rather than in imported psychological theory or unsupported claims about accreditation.
 
 Indicators of Working:
 - Students exhibit observable pauses before re-engaging with challenging Cambridge primary tasks.
@@ -721,16 +762,16 @@ Grade Scope:        ${gradeScope}
 CEQHS Phase:        Phase ${phaseNumber}
 
 Framework Outcome (verbatim):
-चारित्रिक र संवेगात्मक विकास: आत्म-सचेतना, मानवीय मूल्य र सामुदायिक सहकार्य (Character and Emotional Development: Self-awareness, Human Values, and Community Cohesion).
+चारित्रिक र संवेगात्मक विकास: आत्म-सचेतना, मानवीय मूल्य र सामुदायिक सहकार।
 
 Source Citation:
-National Curriculum Framework for School Education (NCF 2076) · Curriculum Development Centre (CDC), Government of Nepal · 2019 · ${gradeScope.includes('1–3') ? 'Integrated Curriculum (Hamro Serofero), Personal and Social Development Theme' : 'Subject Curriculum: Social Studies and Human Values Education, Grade 4–5'}
+National Curriculum Framework for School Education (NCF 2076) · Curriculum Development Centre (CDC), Government of Nepal · 2019 · ${gradeScope.includes('1–3') ? 'Integrated Curriculum (Hamro Serofero)' : 'Subject-based Approach for Grades 4–5'}
 
 Alignment Type:     Contributing
 Evidence Tier:      Tier 2 — Reasoned
 
 Rationale:
-In strict alignment with the National Curriculum Framework for School Education 2076 published by the Curriculum Development Centre (CDC), this mapping completely avoids imported SEL terminology and frames ${practiceName} through Nepal's core educational values of human values (मानवीय मूल्य), holistic character development, and Community and Service (CAS). For ${gradeScope}, this practice integrates directly into the thematic inquiries of Hamro Serofero, providing teachers with culturally grounded routines to nurture empathy, civic respect, and emotional balance without altering national pedagogical requirements.
+In strict alignment with the National Curriculum Framework for School Education 2076 published by the Curriculum Development Centre (CDC), this mapping avoids imported SEL terminology and instead grounds the practice in human values, self-awareness, and communal participation. The daily routine supports the integrated and contextual goals of Hamro Serofero and the subject-based emphasis of upper primary grades by helping learners notice their emotions, respect others, and participate more constructively in school life. It therefore acts as a contributing practice that strengthens the NCF 2076 emphasis on holistic development without replacing formal curriculum content.
 
 Indicators of Working:
 - Students articulate self-awareness connections using Hamro Serofero themes and Nepali civic values.
