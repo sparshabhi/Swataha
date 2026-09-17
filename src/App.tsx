@@ -155,6 +155,7 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [toast, setToast] = useState<AppToast | null>(null);
+  const [isAppLoading, setIsAppLoading] = useState(false);
 
   const showToast = (type: AppToast['type'], title: string, message: string) => {
     const nextToast = { id: Date.now(), type, title, message };
@@ -162,6 +163,12 @@ export default function App() {
     window.setTimeout(() => {
       setToast((current) => (current?.id === nextToast.id ? null : current));
     }, 3000);
+  };
+
+  const transitionToTab = (nextTab: string) => {
+    setIsAppLoading(true);
+    setCurrentTab(nextTab);
+    window.setTimeout(() => setIsAppLoading(false), 200);
   };
 
   // Active User Profile
@@ -209,7 +216,7 @@ export default function App() {
     setNotifications([]);
     setActiveTenantId(INITIAL_TENANTS[0]?.id || '');
     setCurrentUserKey('maya');
-    setCurrentTab('home');
+    transitionToTab('home');
     setSelectedThemeIdForView('empathetic-discipline');
     setActiveUser(MOCK_USERS.maya);
     setActivePortalRole('ceqhs');
@@ -316,6 +323,7 @@ export default function App() {
     setCurrentUserKey(userKey);
     const selected = MOCK_USERS[userKey] || MOCK_USERS.maya;
     setActiveUser(selected);
+    showToast('info', 'User switched', `${selected.name} is now active.`);
   };
 
   const handleOpenCapture = (
@@ -354,7 +362,7 @@ export default function App() {
 
   const handleSelectTheme = (themeId: string) => {
     setSelectedThemeIdForView(themeId);
-    setCurrentTab('themes');
+    transitionToTab('themes');
   };
 
   const handleAddReviewFeedback = (notes: string) => {
@@ -393,6 +401,7 @@ export default function App() {
 
   // Handle Tenant selection
   const handleSelectTenant = (tenantId: string) => {
+    setIsAppLoading(true);
     setActiveTenantId(tenantId);
     persistActiveTenantId(tenantId);
     const tenant = tenants.find((t) => t.id === tenantId);
@@ -403,6 +412,7 @@ export default function App() {
         schoolName: tenant.name,
       }));
     }
+    window.setTimeout(() => setIsAppLoading(false), 180);
     showToast('info', 'Tenant updated', 'The active tenant context has been switched.');
   };
 
@@ -529,6 +539,7 @@ export default function App() {
     tenantId?: string,
     registeredUser?: any
   ) => {
+    setIsAppLoading(true);
     setIsAuthenticated(true);
     try {
       localStorage.setItem(STORAGE_KEYS.authSession, 'active');
@@ -555,6 +566,7 @@ export default function App() {
       setActivePortalRole(registeredUser.role === 'school_admin' ? 'school_admin' : registeredUser.role === 'admin' ? 'school_admin' : 'teacher');
       persistPortalRole(registeredUser.role === 'school_admin' ? 'school_admin' : registeredUser.role === 'admin' ? 'school_admin' : 'teacher');
       showToast('success', 'Welcome back', `Signed in as ${registeredUser.name}.`);
+      window.setTimeout(() => setIsAppLoading(false), 180);
       return;
     }
 
@@ -616,7 +628,105 @@ export default function App() {
     setActivePortalRole(effectiveRole);
     persistPortalRole(effectiveRole);
     showToast('success', 'Signed in', `Welcome ${_user || 'back'}.`);
+    window.setTimeout(() => setIsAppLoading(false), 180);
   };
+
+  const handleSuspendTeacherUser = (userId: string) => {
+    const updated = tenantUsers.map((u) => {
+      if (u.id === userId) {
+        const nextStatus: 'active' | 'suspended' =
+          u.status === 'suspended' ? 'active' : 'suspended';
+        return {
+          ...u,
+          status: nextStatus,
+        };
+      }
+      return u;
+    });
+    setTenantUsers(updated);
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updated);
+    showToast('info', 'User status updated', 'The teacher status has been changed.');
+  };
+
+  const handleRejectTeacherUser = (userId: string) => {
+    const updated = tenantUsers.filter((u) => u.id !== userId);
+    setTenantUsers(updated);
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updated);
+    showToast('info', 'Teacher rejected', 'The teacher record has been removed from the active cohort.');
+  };
+
+  // Launch directly into an Educator's workspace from the school dashboard
+  const handleLaunchTeacherWorkspace = (targetTeacher: TenantUser) => {
+    if (targetTeacher.status === 'pending_approval') {
+      handleApproveTeacherUser(targetTeacher.id);
+    }
+    setIsAppLoading(true);
+    setActiveTenantId(targetTeacher.tenantId);
+    persistActiveTenantId(targetTeacher.tenantId);
+    setActivePortalRole('teacher');
+    persistPortalRole('teacher');
+
+    setActiveUser({
+      id: targetTeacher.id,
+      name: targetTeacher.name,
+      email: targetTeacher.email,
+      role: 'educator',
+      schoolId: targetTeacher.tenantId,
+      schoolName: targetTeacher.tenantName,
+      academicYear: activeTenant?.academicYear || '2026–27',
+      title: targetTeacher.title,
+      settings: DEFAULT_USER_SETTINGS,
+    });
+    setCurrentTab('home');
+    window.setTimeout(() => setIsAppLoading(false), 180);
+    showToast('success', 'Teacher workspace', `${targetTeacher.name}'s workspace is now open.`);
+  };
+
+  const handleImpersonateTenantUser = (targetUser: TenantUser) => {
+    setIsAppLoading(true);
+    setActiveTenantId(targetUser.tenantId);
+    persistActiveTenantId(targetUser.tenantId);
+
+    const appRole = targetUser.role === 'school_admin' ? 'admin' : targetUser.role === 'coordinator' ? 'coordinator' : 'educator';
+    setActiveUser((prev) => ({
+      ...prev,
+      id: targetUser.id,
+      name: targetUser.name,
+      email: targetUser.email,
+      role: appRole,
+      title: targetUser.title,
+      schoolId: targetUser.tenantId,
+      schoolName: targetUser.tenantName,
+    }));
+    setCurrentUserKey(targetUser.id);
+    window.setTimeout(() => setIsAppLoading(false), 180);
+    showToast('info', 'Impersonating user', `Viewing ${targetUser.name}'s context.`);
+  };
+
+  const handleBulkEnrollTeachers = (teacherInputs: Array<{ name: string; email: string; role: string; tenantId: string }>) => {
+    const nextUsers = teacherInputs.map((teacher, index) => ({
+      id: `bulk-${Date.now()}-${index}`,
+      tenantId: teacher.tenantId,
+      tenantName: tenants.find((t) => t.id === teacher.tenantId)?.name || 'School Tenant',
+      name: teacher.name,
+      email: teacher.email,
+      role: teacher.role === 'school_admin' ? 'school_admin' : 'teacher',
+      status: 'pending_approval' as const,
+      title: 'New Educator',
+      department: 'Faculty',
+      competencyFocus: 'Know Yourself (Emotional Literacy)',
+      joinedDate: new Date().toISOString().split('T')[0],
+      activeEntriesCount: 0,
+      avatarInitials: teacher.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+    }));
+
+    setTenantUsers((prev) => [...prev, ...nextUsers]);
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, [...tenantUsers, ...nextUsers]);
+    showToast('success', 'Bulk enrollment', `${nextUsers.length} teacher account(s) have been queued.`);
+  };
+
+  const currentTheme = THEMES.find((t) => t.id === selectedThemeIdForView) || THEMES[0];
+  const userSettings = activeUser.settings || DEFAULT_USER_SETTINGS;
 
   if (!isAuthenticated) {
     return (
@@ -643,6 +753,7 @@ export default function App() {
     );
   }
 
+  // 1. CEQHS USER DASHBOARD EXPERIENCE
   if (activePortalRole === 'ceqhs') {
     return (
       <>
@@ -676,7 +787,7 @@ export default function App() {
       <div className="min-h-screen bg-[#F8F7F3] text-[#252525] flex flex-col lg:flex-row antialiased selection:bg-[#EAF0EB] selection:text-[#252525]">
         <Navigation
           currentTab={currentTab}
-          onSelectTab={setCurrentTab}
+          onSelectTab={transitionToTab}
           currentUser={activeUser}
           onSwitchUser={handleSwitchDemoUser}
           allUsers={MOCK_USERS}
@@ -705,7 +816,7 @@ export default function App() {
               calendarEvents={CALENDAR_EVENTS}
               onOpenCapture={handleOpenCapture}
               onSelectTheme={handleSelectTheme}
-              onNavigateTab={setCurrentTab}
+              onNavigateTab={transitionToTab}
               gameProgress={gameProgress}
             />
           )}
@@ -723,7 +834,7 @@ export default function App() {
             <Achievements
               currentUser={activeUser}
               gameProgress={gameProgress}
-              onNavigateToSimulator={() => setCurrentTab('simulator')}
+              onNavigateToSimulator={() => transitionToTab('simulator')}
             />
           )}
 
@@ -783,7 +894,7 @@ export default function App() {
               onCreateUser={handleCreateTenantUser}
               onNavigateToDossier={(tenantId) => {
                 handleSelectTenant(tenantId);
-                setCurrentTab('dossier');
+                transitionToTab('dossier');
               }}
               onImpersonateUser={handleImpersonateTenantUser}
               currentUser={activeUser}
@@ -794,7 +905,7 @@ export default function App() {
             <ImpactEvidencePortal
               currentUser={activeUser}
               activeTenant={activeTenant}
-              onNavigateTab={setCurrentTab}
+              onNavigateTab={transitionToTab}
             />
           )}
 
@@ -804,7 +915,7 @@ export default function App() {
               signals={SCHOOL_SIGNALS}
               entries={entries}
               phases={JOURNEY_PHASES}
-              onNavigateTab={setCurrentTab}
+              onNavigateTab={transitionToTab}
               tenantUsers={tenantUsers}
               onApproveTeacher={handleApproveTeacherUser}
               onSuspendTeacher={handleSuspendTeacherUser}
@@ -865,7 +976,7 @@ export default function App() {
           }
           onClearAll={() => setNotifications([])}
           onNavigateTab={(tab) => {
-            setCurrentTab(tab);
+            transitionToTab(tab);
             setIsNotificationsOpen(false);
           }}
           currentRole={activeUser.role}
@@ -881,6 +992,15 @@ export default function App() {
               <div className="font-semibold text-slate-900">{toast.title}</div>
               <div className="text-sm text-slate-600">{toast.message}</div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAppLoading && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/15 backdrop-blur-[2px]">
+          <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 shadow-lg">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800" />
+            <span className="text-sm font-medium text-slate-700">Loading workspace...</span>
           </div>
         </div>
       )}
