@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Sparkles,
   Timer,
@@ -44,7 +44,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
   userSettings,
   onOpenSettings,
 }) => {
-  // Current active scenario selected based on DDA tier
   const [currentScenarioIndex, setCurrentScenarioIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<ScenarioOption | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -52,17 +51,33 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
   const [unlockedNotice, setUnlockedNotice] = useState<string | null>(null);
   const [adjustmentNotice, setAdjustmentNotice] = useState<string | null>(null);
 
-  // Timer & Pause telemetry
   const [timeRemaining, setTimeRemaining] = useState<number>(
     gameProgress.dda.adaptiveTimerSeconds || 18
   );
   const [timeElapsed, setTimeElapsed] = useState<number>(0);
-  const [pauseMeter, setPauseMeter] = useState<number>(0); // 0 to 100% of minimum deliberate pause
+  const [pauseMeter, setPauseMeter] = useState<number>(0);
   const timerRef = useRef<any>(null);
   const pauseIntervalRef = useRef<any>(null);
   const adjustmentNoticeTimeoutRef = useRef<number | null>(null);
   const unlockedNoticeTimeoutRef = useRef<number | null>(null);
   const autoAdvanceTimeoutRef = useRef<number | null>(null);
+
+  const currentTier = gameProgress.dda.currentTier;
+
+  const filteredScenarios = useMemo(
+    () => SCENARIOS.filter((s) => s.difficultyTier === currentTier),
+    [currentTier]
+  );
+
+  const scenariosPool = useMemo(
+    () => (filteredScenarios.length > 0 ? filteredScenarios : SCENARIOS),
+    [filteredScenarios]
+  );
+
+  const activeScenario = useMemo(
+    () => scenariosPool[currentScenarioIndex % scenariosPool.length] || SCENARIOS[0],
+    [scenariosPool, currentScenarioIndex]
+  );
 
   const clearQueuedTimeouts = () => {
     if (adjustmentNoticeTimeoutRef.current) {
@@ -81,13 +96,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
     }
   };
 
-  // Filter available scenarios based on player's current adaptive tier, or fall back
-  const currentTier = gameProgress.dda.currentTier;
-  const filteredScenarios = SCENARIOS.filter((s) => s.difficultyTier === currentTier);
-  const scenariosPool = filteredScenarios.length > 0 ? filteredScenarios : SCENARIOS;
-  const activeScenario = scenariosPool[currentScenarioIndex % scenariosPool.length] || SCENARIOS[0];
-
-  // Reset timer on scenario change
   useEffect(() => {
     setSelectedOption(null);
     setHasSubmitted(false);
@@ -115,7 +123,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
       }, 1000);
     }
 
-    // Elapsed timer & deliberate pause tracker
     const startTime = Date.now();
     const minPauseSec = activeScenario.minimumDeliberatePauseSeconds || 4;
 
@@ -130,7 +137,13 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
       if (timerRef.current) clearInterval(timerRef.current);
       if (pauseIntervalRef.current) clearInterval(pauseIntervalRef.current);
     };
-  }, [currentScenarioIndex, currentTier, userSettings.timerMode, activeScenario.minimumDeliberatePauseSeconds, gameProgress.dda.adaptiveTimerSeconds]);
+  }, [
+    currentScenarioIndex,
+    currentTier,
+    userSettings.timerMode,
+    activeScenario.minimumDeliberatePauseSeconds,
+    gameProgress.dda.adaptiveTimerSeconds,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -140,7 +153,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
     };
   }, []);
 
-  // Handle option selection
   const handleSelectOption = (opt: ScenarioOption) => {
     if (hasSubmitted) return;
     setSelectedOption(opt);
@@ -153,7 +165,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
     const minPauseSec = activeScenario.minimumDeliberatePauseSeconds || 4;
     const pausedEnough = timeElapsed >= minPauseSec;
 
-    // Run DDA algorithm
     const { nextDDA, unlockedAchievements, adjustmentReason } = calculateNextDDA(
       gameProgress.dda,
       {
@@ -166,11 +177,9 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
       userSettings
     );
 
-    // Show adjustment reason
     setAdjustmentNotice(adjustmentReason);
     adjustmentNoticeTimeoutRef.current = window.setTimeout(() => setAdjustmentNotice(null), 5000);
 
-    // Update achievements
     const updatedAchievements = gameProgress.achievements.map((ach) => {
       if (unlockedAchievements.includes(ach.id) && !ach.unlocked) {
         setUnlockedNotice(`Badge Unlocked: ${ach.title}!`);
@@ -212,7 +221,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
 
     onUpdateGameProgress(newGameProgress);
 
-    // Auto advance if configured
     if (userSettings.autoAdvance) {
       autoAdvanceTimeoutRef.current = window.setTimeout(() => {
         handleNextScenario();
@@ -224,7 +232,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
     setCurrentScenarioIndex((prev) => prev + 1);
   };
 
-  // Flow status label
   const flowStateLabel =
     gameProgress.dda.flowState === 'flow'
       ? 'Optimal Flow'
@@ -249,7 +256,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-16">
-      {/* Top Header & Context */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stone-200 pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -297,10 +303,8 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
         </div>
       </div>
 
-      {/* DDA Dynamic Telemetry Bar */}
       <div className="p-4 rounded-2xl bg-[#EFECE4] border border-stone-300/80 shadow-xs space-y-3">
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {/* Tier */}
           <div className="p-2.5 rounded-xl bg-white border border-stone-200">
             <span className="text-[10px] uppercase font-bold text-stone-500 block">
               Adaptive Tier
@@ -318,7 +322,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             </div>
           </div>
 
-          {/* Flow Channel */}
           <div className="p-2.5 rounded-xl bg-white border border-stone-200">
             <span className="text-[10px] uppercase font-bold text-stone-500 block">
               Engagement Flow
@@ -338,7 +341,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             </div>
           </div>
 
-          {/* Skill Rating */}
           <div className="p-2.5 rounded-xl bg-white border border-stone-200">
             <span className="text-[10px] uppercase font-bold text-stone-500 block">
               Skill ELO Rating
@@ -351,7 +353,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             </div>
           </div>
 
-          {/* Response Latency */}
           <div className="p-2.5 rounded-xl bg-white border border-stone-200">
             <span className="text-[10px] uppercase font-bold text-stone-500 block">
               Somatic Pause
@@ -364,7 +365,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             </div>
           </div>
 
-          {/* Streak */}
           <div className="p-2.5 rounded-xl bg-white border border-stone-200 col-span-2 sm:col-span-1">
             <span className="text-[10px] uppercase font-bold text-stone-500 block">
               Mastery Streak
@@ -384,7 +384,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
           </div>
         </div>
 
-        {/* Dynamic Countdown Bar */}
         {userSettings.timerMode !== 'zen' && (
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[11px] text-stone-600 font-medium">
@@ -412,7 +411,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
         )}
       </div>
 
-      {/* DDA Adjustment & Achievement Alerts */}
       {adjustmentNotice && (
         <div className="p-3 rounded-xl bg-[#EAF0EB] border border-[#4A6B53]/30 text-xs text-[#252525] flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-2">
@@ -431,7 +429,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
         </div>
       )}
 
-      {/* DDA Telemetry Details Drawer */}
       {showDiagnostics && (
         <div className="p-5 rounded-2xl bg-white border border-stone-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-stone-200 pb-3">
@@ -483,9 +480,7 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
         </div>
       )}
 
-      {/* Active Dilemma Scenario Card */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-        {/* Scenario Context Banner */}
         <div className="p-4 sm:p-5 border-b border-stone-200 bg-[#FAF9F5] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-[#EAF0EB] text-[#4A6B53] text-[10px] font-bold uppercase tracking-wider">
@@ -503,7 +498,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
           </div>
         </div>
 
-        {/* Incident Narrative */}
         <div className="p-6 space-y-5">
           <h2 className="font-editorial text-2xl sm:text-3xl text-[#252525] font-normal leading-snug">
             {activeScenario.title}
@@ -513,7 +507,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             {activeScenario.situation}
           </p>
 
-          {/* Student/Colleague Voice in Tension */}
           <div className="p-4 rounded-xl bg-[#FAF3E7] border-l-3 border-[#C88A2E] text-stone-800 space-y-1">
             <span className="text-[10px] uppercase font-bold text-[#C88A2E] tracking-wider block">
               Spoken in the Moment:
@@ -523,7 +516,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             </div>
           </div>
 
-          {/* The Curious Pause Anchor Prompt */}
           <div className="p-4 rounded-xl bg-[#F4F1EA] border border-stone-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
               <span className="text-[10px] uppercase font-bold text-[#4A6B53] tracking-wider block">
@@ -534,7 +526,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
               </p>
             </div>
 
-            {/* Somatic Pause Window Meter */}
             <div className="flex items-center gap-2 shrink-0">
               <div className="text-[11px] font-medium text-stone-500">
                 {pauseMeter >= 100 ? (
@@ -560,7 +551,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             </div>
           </div>
 
-          {/* 4 Pedagogical Response Options */}
           <div className="space-y-3 pt-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-stone-500 block">
               Choose your educational response:
@@ -601,7 +591,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
             </div>
           </div>
 
-          {/* Post-Choice Pedagogical Debrief */}
           {hasSubmitted && selectedOption && (
             <div className="pt-4 border-t border-stone-200 space-y-4 animate-in fade-in duration-300">
               <div
@@ -649,7 +638,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
                 </div>
               </div>
 
-              {/* Next Dilemma CTA */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
                 <div className="text-xs text-stone-500">
                   Adaptive Engine calibrated for next dilemma
@@ -681,7 +669,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
         </div>
       </div>
 
-      {/* Difficulty Adjustment & Growth Trajectory Line Chart (Recharts) */}
       <div id="dda-growth-chart-section">
         <DDAGrowthChart
           history={gameProgress.recentHistory}
@@ -689,7 +676,6 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
         />
       </div>
 
-      {/* Recent History Telemetry */}
       {gameProgress.recentHistory.length > 0 && (
         <div className="p-5 rounded-2xl bg-white border border-stone-200 shadow-2xs space-y-3">
           <div className="flex items-center justify-between">
@@ -728,3 +714,4 @@ export const DDAGameSimulator: React.FC<DDAGameSimulatorProps> = ({
     </div>
   );
 };
+
