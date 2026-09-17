@@ -23,6 +23,7 @@ import {
   limit,
   Timestamp,
   deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -58,5 +59,6 @@ export {
   orderBy,
   limit,
   deleteDoc,
+  writeBatch,
 };
 export type { FirebaseUser };
