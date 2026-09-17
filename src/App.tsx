@@ -61,23 +61,85 @@ import {
 import { INITIAL_GAME_PROGRESS, DEFAULT_USER_SETTINGS } from './lib/gameDDA';
 import { triggerStreakFirework } from './lib/celebration';
 
+const STORAGE_KEYS = {
+  authSession: 'ceqhs_auth_session',
+  portalRole: 'ceqhs_portal_role',
+  activeTenantId: 'ceqhs_active_tenant_id',
+  notifications: 'ceqhs_notifications',
+  entries: 'ceqhs_entries',
+  gameProgress: 'ceqhs_game_progress',
+  tenants: 'ceqhs_tenants',
+  tenantUsers: 'ceqhs_tenant_users',
+} as const;
+
+const readStorageValue = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const readSessionValue = (key: string) => {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const readPersistedString = (key: string) => {
+  return readStorageValue(key) ?? readSessionValue(key) ?? null;
+};
+
+const readJsonStorage = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = readStorageValue(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const writeJsonStorage = (key: string, value: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
+
+const persistPortalRole = (role: 'ceqhs' | 'school_admin' | 'teacher') => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.portalRole, role);
+    sessionStorage.setItem(STORAGE_KEYS.portalRole, role);
+  } catch {}
+};
+
+const persistActiveTenantId = (tenantId: string) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.activeTenantId, tenantId);
+  } catch {}
+};
+
+const clearAuthSession = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.authSession);
+    sessionStorage.removeItem(STORAGE_KEYS.authSession);
+    localStorage.removeItem(STORAGE_KEYS.portalRole);
+    sessionStorage.removeItem(STORAGE_KEYS.portalRole);
+  } catch (e) {
+    console.warn('Could not clear auth session', e);
+  }
+};
+
 export default function App() {
   // App Access Authentication Gate (Username: admin, Password: password)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      const local = localStorage.getItem('ceqhs_auth_session');
-      const session = sessionStorage.getItem('ceqhs_auth_session');
-      return Boolean(local || session);
-    } catch {
-      return false;
-    }
+    return Boolean(readPersistedString(STORAGE_KEYS.authSession));
   });
 
   const [activePortalRole, setActivePortalRole] = useState<'ceqhs' | 'school_admin' | 'teacher'>(() => {
-    try {
-      const saved = localStorage.getItem('ceqhs_portal_role') || sessionStorage.getItem('ceqhs_portal_role');
-      if (saved === 'ceqhs' || saved === 'school_admin' || saved === 'teacher') return saved;
-    } catch {}
+    const saved = readPersistedString(STORAGE_KEYS.portalRole);
+    if (saved === 'ceqhs' || saved === 'school_admin' || saved === 'teacher') return saved;
     return 'ceqhs';
   });
 
@@ -93,74 +155,33 @@ export default function App() {
 
   // Game Progress State with Dynamic Difficulty Adjustment (DDA)
   const [gameProgress, setGameProgress] = useState<GameProgressState>(() => {
-    const saved = localStorage.getItem('ceqhs_game_progress');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse saved game progress', e);
-      }
-    }
-    return INITIAL_GAME_PROGRESS;
+    return readJsonStorage(STORAGE_KEYS.gameProgress, INITIAL_GAME_PROGRESS);
   });
 
   // Journey Entries
   const [entries, setEntries] = useState<JourneyEntry[]>(() => {
-    const saved = localStorage.getItem('ceqhs_entries');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse saved entries', e);
-      }
-    }
-    return INITIAL_ENTRIES;
+    return readJsonStorage(STORAGE_KEYS.entries, INITIAL_ENTRIES);
   });
 
   const [checkpoints, setCheckpoints] = useState<CEQHSReviewCheckpoint[]>(CEQHS_REVIEW_CHECKPOINTS);
 
   // Multi-Tenant Platform State
   const [tenants, setTenants] = useState<Tenant[]>(() => {
-    const saved = localStorage.getItem('ceqhs_tenants');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse saved tenants', e);
-      }
-    }
-    return INITIAL_TENANTS;
+    return readJsonStorage(STORAGE_KEYS.tenants, INITIAL_TENANTS);
   });
 
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>(() => {
-    const saved = localStorage.getItem('ceqhs_tenant_users');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse saved tenant users', e);
-      }
-    }
-    return INITIAL_TENANT_USERS;
+    return readJsonStorage(STORAGE_KEYS.tenantUsers, INITIAL_TENANT_USERS);
   });
 
   const [activeTenantId, setActiveTenantId] = useState<string>(() => {
-    const saved = localStorage.getItem('ceqhs_active_tenant_id');
-    return saved || (INITIAL_TENANTS[0]?.id || '');
+    return readPersistedString(STORAGE_KEYS.activeTenantId) || (INITIAL_TENANTS[0]?.id || '');
   });
 
   // Notification State
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem('ceqhs_notifications');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse notifications', e);
-      }
-    }
-    return INITIAL_NOTIFICATIONS;
+    return readJsonStorage(STORAGE_KEYS.notifications, INITIAL_NOTIFICATIONS);
   });
 
   const handleResetAllData = () => {
@@ -177,15 +198,12 @@ export default function App() {
     setActiveUser(MOCK_USERS.maya);
     setActivePortalRole('ceqhs');
     setIsAuthenticated(true);
-    try {
-      localStorage.setItem('ceqhs_active_tenant_id', INITIAL_TENANTS[0]?.id || '');
-      localStorage.setItem('ceqhs_portal_role', 'ceqhs');
-      sessionStorage.setItem('ceqhs_portal_role', 'ceqhs');
-    } catch {}
+    persistActiveTenantId(INITIAL_TENANTS[0]?.id || '');
+    persistPortalRole('ceqhs');
   };
 
   useEffect(() => {
-    localStorage.setItem('ceqhs_notifications', JSON.stringify(notifications));
+    writeJsonStorage(STORAGE_KEYS.notifications, notifications);
   }, [notifications]);
 
   // Capture modal state
@@ -255,12 +273,12 @@ export default function App() {
 
   // Save entries to localStorage & Firestore if signed in
   useEffect(() => {
-    localStorage.setItem('ceqhs_entries', JSON.stringify(entries));
+    writeJsonStorage(STORAGE_KEYS.entries, entries);
   }, [entries]);
 
   // Save game progress to localStorage
   useEffect(() => {
-    localStorage.setItem('ceqhs_game_progress', JSON.stringify(gameProgress));
+    writeJsonStorage(STORAGE_KEYS.gameProgress, gameProgress);
   }, [gameProgress]);
 
   const handleUpdateGameProgress = (newProgress: GameProgressState) => {
@@ -359,7 +377,7 @@ export default function App() {
   // Handle Tenant selection
   const handleSelectTenant = (tenantId: string) => {
     setActiveTenantId(tenantId);
-    localStorage.setItem('ceqhs_active_tenant_id', tenantId);
+    persistActiveTenantId(tenantId);
     const tenant = tenants.find((t) => t.id === tenantId);
     if (tenant) {
       setActiveUser((prev) => ({
@@ -387,7 +405,7 @@ export default function App() {
     };
     const updated = [...tenants, newTenant];
     setTenants(updated);
-    localStorage.setItem('ceqhs_tenants', JSON.stringify(updated));
+    writeJsonStorage(STORAGE_KEYS.tenants, updated);
 
     // Also automatically create the lead school admin user for this new tenant
     const adminUser: TenantUser = {
@@ -406,7 +424,7 @@ export default function App() {
     };
     const updatedUsers = [...tenantUsers, adminUser];
     setTenantUsers(updatedUsers);
-    localStorage.setItem('ceqhs_tenant_users', JSON.stringify(updatedUsers));
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updatedUsers);
 
     // Auto-select newly created tenant
     handleSelectTenant(newId);
@@ -431,7 +449,7 @@ export default function App() {
     };
     const updated = [...tenantUsers, newUser];
     setTenantUsers(updated);
-    localStorage.setItem('ceqhs_tenant_users', JSON.stringify(updated));
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updated);
   };
 
   // Approve & Open Teacher Account from School Dashboard
@@ -451,7 +469,7 @@ export default function App() {
       return u;
     });
     setTenantUsers(updated);
-    localStorage.setItem('ceqhs_tenant_users', JSON.stringify(updated));
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updated);
 
     if (teacher) {
       const newNotif: AppNotification = {
@@ -508,7 +526,7 @@ export default function App() {
 
     const updatedUsers = [...tenantUsers, ...createdUsers];
     setTenantUsers(updatedUsers);
-    localStorage.setItem('ceqhs_tenant_users', JSON.stringify(updatedUsers));
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updatedUsers);
 
     const newNotifications: AppNotification[] = [];
 
@@ -575,13 +593,13 @@ export default function App() {
       return u;
     });
     setTenantUsers(updated);
-    localStorage.setItem('ceqhs_tenant_users', JSON.stringify(updated));
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updated);
   };
 
   const handleRejectTeacherUser = (userId: string) => {
     const updated = tenantUsers.filter((u) => u.id !== userId);
     setTenantUsers(updated);
-    localStorage.setItem('ceqhs_tenant_users', JSON.stringify(updated));
+    writeJsonStorage(STORAGE_KEYS.tenantUsers, updated);
   };
 
   // Launch directly into an Educator's workspace from the school dashboard
@@ -591,11 +609,9 @@ export default function App() {
       handleApproveTeacherUser(targetTeacher.id);
     }
     setActiveTenantId(targetTeacher.tenantId);
-    localStorage.setItem('ceqhs_active_tenant_id', targetTeacher.tenantId);
+    persistActiveTenantId(targetTeacher.tenantId);
     setActivePortalRole('teacher');
-    try {
-      localStorage.setItem('ceqhs_portal_role', 'teacher');
-    } catch {}
+    persistPortalRole('teacher');
 
     setActiveUser({
       id: targetTeacher.id,
@@ -614,7 +630,7 @@ export default function App() {
   // Impersonate / switch to a specific Tenant User
   const handleImpersonateTenantUser = (targetUser: TenantUser) => {
     setActiveTenantId(targetUser.tenantId);
-    localStorage.setItem('ceqhs_active_tenant_id', targetUser.tenantId);
+    persistActiveTenantId(targetUser.tenantId);
 
     const appRole = targetUser.role === 'school_admin' ? 'admin' : targetUser.role === 'coordinator' ? 'coordinator' : 'educator';
     setActiveUser((prev) => ({
@@ -640,6 +656,10 @@ export default function App() {
     registeredUser?: any
   ) => {
     setIsAuthenticated(true);
+    try {
+      localStorage.setItem(STORAGE_KEYS.authSession, 'active');
+      sessionStorage.setItem(STORAGE_KEYS.authSession, 'active');
+    } catch {}
 
     if (registeredUser) {
       setActiveUser({
@@ -662,7 +682,7 @@ export default function App() {
       });
       if (registeredUser.tenantId) {
         setActiveTenantId(registeredUser.tenantId);
-        localStorage.setItem('ceqhs_active_tenant_id', registeredUser.tenantId);
+        persistActiveTenantId(registeredUser.tenantId);
       }
       setCurrentTab(
         registeredUser.role === 'school_admin'
@@ -676,14 +696,14 @@ export default function App() {
 
     if (tenantId) {
       setActiveTenantId(tenantId);
-      localStorage.setItem('ceqhs_active_tenant_id', tenantId);
+      persistActiveTenantId(tenantId);
     }
 
     const currentSchoolTenant =
       tenants.find((t) => t.id === (tenantId || activeTenantId)) || tenants[0];
 
     if (role === 'ceqhs') {
-      const isSaugat = !_user || _user.toLowerCase().includes('saugat') || _user.toLowerCase().includes('admin') || _user.toLowerCase().includes('ceqhs') || _user.toLowerCase().includes('swataha') || _user.toLowerCase().includes('platform');
+      const isSaugat = !_user || _user.toLowerCase().includes('saugat') || _user.toLowerCase().includes('admin') || _user.toLowerCase().includes('ceqhs') || _user.toLowerCase().includes('swataha') || _user.toLowerCase().includes('owner');
       const resolvedName = isSaugat ? 'Saugat Singh' : (_user.includes('@') ? _user.split('@')[0] : _user);
       const resolvedEmail = isSaugat ? 'saugat.swataha@gmail.com' : (_user.includes('@') ? _user : 'saugat.swataha@gmail.com');
 
@@ -739,20 +759,11 @@ export default function App() {
 
     const effectiveRole = role || 'ceqhs';
     setActivePortalRole(effectiveRole);
-    try {
-      localStorage.setItem('ceqhs_portal_role', effectiveRole);
-    } catch {}
+    persistPortalRole(effectiveRole);
   };
 
   const handleLogout = () => {
-    try {
-      localStorage.removeItem('ceqhs_auth_session');
-      sessionStorage.removeItem('ceqhs_auth_session');
-      localStorage.removeItem('ceqhs_portal_role');
-      sessionStorage.removeItem('ceqhs_portal_role');
-    } catch (e) {
-      console.warn('Could not clear auth session', e);
-    }
+    clearAuthSession();
     setIsAuthenticated(false);
   };
 
@@ -777,9 +788,7 @@ export default function App() {
           handleSelectTenant(tenantId);
           setActivePortalRole('school_admin');
           setCurrentTab('school');
-          try {
-            localStorage.setItem('ceqhs_portal_role', 'school_admin');
-          } catch {}
+          persistPortalRole('school_admin');
         }}
       />
     );
@@ -800,9 +809,7 @@ export default function App() {
         onLogout={handleLogout}
         onSwitchToCeqhsPortal={() => {
           setActivePortalRole('ceqhs');
-          try {
-            localStorage.setItem('ceqhs_portal_role', 'ceqhs');
-          } catch {}
+          persistPortalRole('ceqhs');
         }}
         activeTenantName={activeTenant?.name}
         activeTenantCode={activeTenant?.code}
